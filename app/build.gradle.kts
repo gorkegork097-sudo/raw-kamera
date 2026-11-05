@@ -7,7 +7,8 @@ val buildNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
 
 android {
     namespace = "com.rawkamera"
-    compileSdk = 34
+    // 35: flaş gücü ayarı (Android 15) için gerekli
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.rawkamera"

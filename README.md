@@ -11,13 +11,20 @@ Fotoğraflar `DCIM/RawKamera` klasörüne kaydedilir.
 |---|---|
 | Ses açma tuşuna uzun bas | ISO menüsünü açar / kapatır |
 | Ses kısma tuşuna uzun bas | Enstantane menüsünü açar / kapatır |
-| Menü açıkken ses açma / kısma | Değeri bir adım artırır / azaltır (hafif titreşim) |
+| İki tuşa birlikte uzun bas | Flaş kapalıyken açar ve güç menüsünü gösterir; menü açıkken menüyü kapatır; flaş açık ve menü kapalıyken flaşı kapatır |
+| Menü açıkken ses açma / kısma | Değeri bir adım artırır / azaltır (ince / kalın tık + hafif titreşim) |
 | Menüdeki cetveli kaydır | Değeri dokunarak değiştirir |
-| Üstteki ISO veya ENS yazısına dokun | O menüyü açar |
-| İki tuşa birlikte uzun bas | Şimdilik boş, ileride bir özellik için ayrıldı |
-| Alttaki çubuğa dokun | Fotoğraf çeker (kısa mekanik tık) |
+| Üstteki ISO, ENS veya FLŞ yazısına dokun | O menüyü açar |
+| Sağ üstteki ayar simgesi | Kılavuz, flaş modu (patlama / sürekli) ve zamanlayıcı (2 / 5 / 10 sn) |
+| Seçili SPİRAL'e tekrar dokun | Spirali bir sonraki köşeye çevirir |
+| Vizöre dokun | O noktaya odaklar, 3 sn sonra otomatik odağa döner |
+| Vizöre basılı tut | O noktada odağı kilitler (AF-L) |
+| Alttaki çubuğa dokun | Fotoğraf çeker (zamanlayıcı açıksa geri sayar, son 3 sn bip) |
+| Alttaki çubuğa basılı tut | Seri çekim (her karede tık, çekilen kare sayısı görünür) |
 
-Menü son ayardan 4 saniye sonra kendiliğinden kapanır.
+Menüler son ayardan 4 saniye sonra kendiliğinden kapanır.
+Telefon sessiz ya da titreşim modundayken uygulama hiç ses çıkarmaz.
+Patlama modunda flaş seri çekimde kullanılmaz; sürekli modda yanmaya devam eder.
 EV, mevcut ISO ve enstantaneyle fotoğrafın orta griye göre ne kadar karanlık (−) ya da aydınlık (+) çıkacağını gösteren bir ışık ölçerdir.
 
 ## Derleme

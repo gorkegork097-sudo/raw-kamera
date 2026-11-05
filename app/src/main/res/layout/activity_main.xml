@@ -5,7 +5,7 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <!-- Vizör: 3:4 canlı görüntü + ızgara -->
+    <!-- Vizör: 3:4 canlı görüntü, kılavuz, odak karesi, geri sayım -->
     <com.rawkamera.AspectFrameLayout
         android:id="@+id/previewBox"
         android:layout_width="match_parent"
@@ -17,12 +17,45 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
-        <com.rawkamera.GridOverlay
+        <com.rawkamera.GuideOverlay
+            android:id="@+id/guides"
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
+
+        <View
+            android:id="@+id/focusSquare"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:layout_gravity="top|start"
+            android:background="@drawable/focus_box"
+            android:visibility="invisible" />
+
+        <TextView
+            android:id="@+id/afLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|start"
+            android:fontFamily="sans-serif"
+            android:letterSpacing="0.16"
+            android:text="AF-L"
+            android:textColor="#FFFFFF"
+            android:textSize="9sp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/countdown"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:fontFamily="sans-serif-thin"
+            android:fontFeatureSettings="tnum"
+            android:includeFontPadding="false"
+            android:textColor="#FFFFFF"
+            android:textSize="120sp"
+            android:visibility="gone" />
     </com.rawkamera.AspectFrameLayout>
 
-    <!-- Üst bilgi satırı: histogram, ISO, ENS, EV, RAW -->
+    <!-- Üst bilgi satırı: histogram, ISO, ENS, EV, FLŞ, RAW, ayarlar -->
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
@@ -31,19 +64,19 @@
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingStart="20dp"
-        android:paddingTop="44dp"
-        android:paddingEnd="20dp">
+        android:paddingTop="40dp"
+        android:paddingEnd="14dp">
 
         <com.rawkamera.HistogramView
             android:id="@+id/histogram"
-            android:layout_width="96dp"
-            android:layout_height="40dp" />
+            android:layout_width="84dp"
+            android:layout_height="34dp" />
 
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="14dp"
-            android:layout_marginEnd="10dp"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="8dp"
             android:layout_weight="1"
             android:orientation="horizontal">
 
@@ -53,8 +86,8 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:orientation="vertical"
-                android:paddingTop="6dp"
-                android:paddingBottom="6dp">
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp">
                 <TextView android:id="@+id/isoLabel" style="@style/HudLabel"
                     android:layout_width="wrap_content" android:layout_height="wrap_content"
                     android:text="ISO" />
@@ -69,8 +102,8 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:orientation="vertical"
-                android:paddingTop="6dp"
-                android:paddingBottom="6dp">
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp">
                 <TextView android:id="@+id/shLabel" style="@style/HudLabel"
                     android:layout_width="wrap_content" android:layout_height="wrap_content"
                     android:text="ENS" />
@@ -84,14 +117,30 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:orientation="vertical"
-                android:paddingTop="6dp"
-                android:paddingBottom="6dp">
-                <TextView style="@style/HudLabel"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp">
+                <TextView android:id="@+id/evLabel" style="@style/HudLabel"
                     android:layout_width="wrap_content" android:layout_height="wrap_content"
                     android:text="EV" />
                 <TextView android:id="@+id/evValue" style="@style/HudValue"
                     android:layout_width="wrap_content" android:layout_height="wrap_content"
                     android:text="0.0" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/flBox"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp">
+                <TextView android:id="@+id/flLabel" style="@style/HudLabel"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="FLŞ" />
+                <TextView android:id="@+id/flValue" style="@style/HudValue"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="—" />
             </LinearLayout>
         </LinearLayout>
 
@@ -108,6 +157,15 @@
             android:text="RAW"
             android:textColor="#FFFFFF"
             android:textSize="9sp" />
+
+        <ImageButton
+            android:id="@+id/settingsBtn"
+            android:layout_width="36dp"
+            android:layout_height="44dp"
+            android:layout_marginStart="2dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Ayarlar"
+            android:src="@drawable/ic_settings" />
     </LinearLayout>
 
     <!-- Desteklenmiyor / izin yok mesajı -->
@@ -124,19 +182,20 @@
         android:textSize="15sp"
         android:visibility="gone" />
 
-    <!-- Alt kısım: ayar menüsü + deklanşör -->
+    <!-- Alt kısım: ayar menüleri + deklanşör -->
     <LinearLayout
         android:id="@+id/bottom"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:background="#000000"
         android:orientation="vertical">
 
+        <!-- ISO / enstantane / flaş gücü menüsü -->
         <LinearLayout
             android:id="@+id/menuPanel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:background="#000000"
             android:orientation="vertical"
             android:visibility="gone">
 
@@ -164,13 +223,13 @@
                     android:letterSpacing="0.2"
                     android:text="ISO"
                     android:textColor="#FFFFFF"
-                    android:textSize="11sp" />
+                    android:textSize="10sp" />
 
                 <TextView
                     android:id="@+id/menuValue"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:fontFamily="sans-serif"
+                    android:fontFamily="sans-serif-light"
                     android:fontFeatureSettings="tnum"
                     android:includeFontPadding="false"
                     android:text="400"
@@ -186,12 +245,64 @@
                 android:layout_marginEnd="20dp" />
         </LinearLayout>
 
-        <TextView
-            android:id="@+id/status"
+        <!-- Ayar menüsü: kılavuz, flaş modu, zamanlayıcı -->
+        <LinearLayout
+            android:id="@+id/settingsPanel"
             android:layout_width="match_parent"
-            android:layout_height="16dp"
+            android:layout_height="wrap_content"
+            android:background="#000000"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#FFFFFF" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingStart="20dp"
+                android:paddingTop="12dp"
+                android:paddingEnd="20dp">
+
+                <TextView style="@style/PanelLabel"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="KILAVUZ" />
+                <com.rawkamera.FlowLayout
+                    android:id="@+id/guideRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+
+                <TextView style="@style/PanelLabel"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="FLAŞ" />
+                <com.rawkamera.FlowLayout
+                    android:id="@+id/flashRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+
+                <TextView style="@style/PanelLabel"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="ZAMANLAYICI" />
+                <com.rawkamera.FlowLayout
+                    android:id="@+id/timerRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Durum / seri çekim sayacı / zamanlayıcı bilgisi -->
+        <TextView
+            android:id="@+id/info"
+            android:layout_width="match_parent"
+            android:layout_height="20dp"
             android:layout_marginTop="4dp"
             android:fontFamily="sans-serif"
+            android:fontFeatureSettings="tnum"
             android:gravity="center"
             android:letterSpacing="0.12"
             android:textColor="#9A9A9A"
