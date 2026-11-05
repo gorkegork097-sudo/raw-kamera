@@ -53,6 +53,7 @@ class CameraController(
     interface Listener {
         fun onCameraError(message: String)
         fun onSaved(name: String)
+        fun onFlashStrengthUnsupported()
     }
 
     private val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
@@ -77,13 +78,14 @@ class CameraController(
     @Volatile var running = false
         private set
 
-    /** Flaş testi: 0 = kapalı, 1 = manuel pozlama + fener, 2 = otomatik pozlama + fener. */
-    @Volatile private var flashTest = 0
+    // Patlama flaşı, fenerin kısa süre yakılmasıyla yapılır: bazı telefonlar (Honor dahil)
+    // manuel pozlamada tek seferlik flaş komutunu görmezden gelir ama feneri yakar.
+    @Volatile private var preFlash = false
 
-    fun setFlashTest(method: Int) {
-        flashTest = method
-        handler?.post { updatePreview() }
-    }
+    /** Güç ayarı feneri susturuyorsa true olur; o andan sonra güç ayarı gönderilmez. */
+    @Volatile var strengthBroken = false
+        private set
+    private var torchMisses = 0
 
     /** Telefonun tutuluş açısı (0, 90, 180, 270), DNG yönü için. */
     @Volatile var deviceRotation = 0
@@ -242,12 +244,6 @@ class CameraController(
 
     private fun applyManual(b: CaptureRequest.Builder, still: Boolean, singleFlash: Boolean) {
         val c = chars
-        if (!still && flashTest == 2) {
-            b.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
-            b.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
-            b.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_TORCH)
-            return
-        }
         b.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
         b.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
         b.set(CaptureRequest.SENSOR_SENSITIVITY, iso)
@@ -265,15 +261,11 @@ class CameraController(
             b.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
         }
 
-        // Flaş: sürekli modda her karede yanar, patlama modunda sadece çekim karesinde.
-        val mode = when {
-            !still && flashTest == 1 -> CaptureRequest.FLASH_MODE_TORCH
-            flash == Flash.TORCH -> CaptureRequest.FLASH_MODE_TORCH
-            still && singleFlash && flash == Flash.SINGLE -> CaptureRequest.FLASH_MODE_SINGLE
-            else -> CaptureRequest.FLASH_MODE_OFF
-        }
+        // Flaş: sürekli modda her karede yanar; patlama modunda çekim sırasında kısa süre yanar.
+        val torch = flash == Flash.TORCH || preFlash || (still && singleFlash && flash == Flash.SINGLE)
+        val mode = if (torch) CaptureRequest.FLASH_MODE_TORCH else CaptureRequest.FLASH_MODE_OFF
         b.set(CaptureRequest.FLASH_MODE, mode)
-        if (mode != CaptureRequest.FLASH_MODE_OFF && flashStrength > 0 && Build.VERSION.SDK_INT >= 35) {
+        if (torch && flashStrength > 0 && !strengthBroken && Build.VERSION.SDK_INT >= 35) {
             b.set(CaptureRequest.FLASH_STRENGTH_LEVEL, flashStrength)
         }
     }
@@ -299,8 +291,33 @@ class CameraController(
             val b = d.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
             b.addTarget(ps)
             applyManual(b, still = false, singleFlash = false)
-            s.setRepeatingRequest(b.build(), null, handler)
+            s.setRepeatingRequest(b.build(), previewCallback, handler)
         } catch (_: Exception) {
+        }
+    }
+
+    /** Fener istendiği hâlde güç ayarı yüzünden yanmıyorsa güç ayarını bırakır. */
+    private val previewCallback = object : CameraCaptureSession.CaptureCallback() {
+        override fun onCaptureCompleted(
+            session: CameraCaptureSession,
+            request: CaptureRequest,
+            result: TotalCaptureResult
+        ) {
+            val wantTorch = request.get(CaptureRequest.FLASH_MODE) == CaptureRequest.FLASH_MODE_TORCH
+            if (!wantTorch || strengthBroken || flashStrength <= 0 || Build.VERSION.SDK_INT < 35) {
+                torchMisses = 0
+                return
+            }
+            if (request.get(CaptureRequest.FLASH_STRENGTH_LEVEL) == null) return
+            val st = result.get(CaptureResult.FLASH_STATE) ?: return
+            if (st == CaptureResult.FLASH_STATE_FIRED || st == CaptureResult.FLASH_STATE_PARTIAL) {
+                torchMisses = 0
+            } else if (++torchMisses >= 15) {
+                strengthBroken = true
+                torchMisses = 0
+                updatePreview()
+                post { listener.onFlashStrengthUnsupported() }
+            }
         }
     }
 
@@ -364,48 +381,76 @@ class CameraController(
      * withFlash: patlama modundaki flaşın bu karede patlayıp patlamayacağı.
      */
     fun capture(withFlash: Boolean): Boolean {
-        val d = device ?: return false
-        val s = session ?: return false
-        val r = reader ?: return false
         val h = handler ?: return false
+        if (device == null || session == null || reader == null) return false
         if (inFlight.get() >= 2) return false
         inFlight.incrementAndGet()
         val orientation = exifOrientation()
+        val fire = withFlash && flash == Flash.SINGLE
         h.post {
-            try {
-                val b = d.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
-                b.addTarget(r.surface)
-                applyManual(b, still = true, singleFlash = withFlash)
-                s.capture(b.build(), object : CameraCaptureSession.CaptureCallback() {
-                    override fun onCaptureCompleted(
-                        session: CameraCaptureSession,
-                        request: CaptureRequest,
-                        result: TotalCaptureResult
-                    ) {
-                        val ts = result.get(CaptureResult.SENSOR_TIMESTAMP)
-                        if (ts == null) {
-                            inFlight.decrementAndGet()
-                            return
-                        }
-                        results[ts] = result to orientation
-                        match(ts)
-                    }
-
-                    override fun onCaptureFailed(
-                        session: CameraCaptureSession,
-                        request: CaptureRequest,
-                        failure: CaptureFailure
-                    ) {
-                        inFlight.decrementAndGet()
-                        post { listener.onCameraError("Çekim başarısız oldu.") }
-                    }
-                }, h)
-            } catch (e: Exception) {
-                inFlight.decrementAndGet()
-                post { listener.onCameraError("Çekim başarısız oldu.") }
+            if (fire) {
+                // Önce feneri yak, ışık oturunca kareyi çek.
+                preFlash = true
+                updatePreview()
+                h.postDelayed({ doCapture(orientation, fire) }, PRE_FLASH_MS)
+            } else {
+                doCapture(orientation, fire)
             }
         }
         return true
+    }
+
+    private fun doCapture(orientation: Int, fire: Boolean) {
+        val d = device
+        val s = session
+        val r = reader
+        val h = handler
+        fun done() {
+            if (fire) {
+                preFlash = false
+                updatePreview()
+            }
+        }
+        if (d == null || s == null || r == null || h == null) {
+            inFlight.decrementAndGet()
+            preFlash = false
+            return
+        }
+        try {
+            val b = d.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
+            b.addTarget(r.surface)
+            applyManual(b, still = true, singleFlash = fire)
+            s.capture(b.build(), object : CameraCaptureSession.CaptureCallback() {
+                override fun onCaptureCompleted(
+                    session: CameraCaptureSession,
+                    request: CaptureRequest,
+                    result: TotalCaptureResult
+                ) {
+                    done()
+                    val ts = result.get(CaptureResult.SENSOR_TIMESTAMP)
+                    if (ts == null) {
+                        inFlight.decrementAndGet()
+                        return
+                    }
+                    results[ts] = result to orientation
+                    match(ts)
+                }
+
+                override fun onCaptureFailed(
+                    session: CameraCaptureSession,
+                    request: CaptureRequest,
+                    failure: CaptureFailure
+                ) {
+                    done()
+                    inFlight.decrementAndGet()
+                    post { listener.onCameraError("Çekim başarısız oldu.") }
+                }
+            }, h)
+        } catch (e: Exception) {
+            done()
+            inFlight.decrementAndGet()
+            post { listener.onCameraError("Çekim başarısız oldu.") }
+        }
     }
 
     /** Aynı zaman damgalı görüntü ve sonuç geldiğinde DNG yazmaya gönderir. */
@@ -515,9 +560,14 @@ class CameraController(
         previewSurface = null
         inFlight.set(0)
         afRegion = null
+        preFlash = false
     }
 
     private fun post(block: () -> Unit) {
         main.post(block)
+    }
+
+    companion object {
+        private const val PRE_FLASH_MS = 350L
     }
 }

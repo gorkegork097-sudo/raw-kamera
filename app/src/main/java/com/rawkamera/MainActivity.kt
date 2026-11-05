@@ -140,26 +140,6 @@ class MainActivity : Activity(), CameraController.Listener {
             ui.postDelayed(this, 1000)
         }
     }
-    // Flaş testi: iki yöntemi 3'er saniye dener.
-    private var testStep = 0
-    private val flashTestRunnable = object : Runnable {
-        override fun run() {
-            testStep++
-            if (testStep <= 2) {
-                cam.setFlashTest(testStep)
-                countdown.text = testStep.toString()
-                countdown.visibility = View.VISIBLE
-                info.setTextColor(GREY)
-                info.textSize = 10f
-                info.text = "FLAŞ TESTİ · YÖNTEM $testStep"
-                ui.postDelayed(this, 3000)
-            } else {
-                stopFlashTest()
-                showStatus("FLAŞ TESTİ BİTTİ")
-            }
-        }
-    }
-
     private val focusReleaseRunnable = Runnable {
         cam.resetFocus()
         focusSquare.animate().alpha(0f).setDuration(300).withEndAction {
@@ -256,7 +236,6 @@ class MainActivity : Activity(), CameraController.Listener {
         ui.removeCallbacks(meterRunnable)
         stopBurst()
         cancelCountdown()
-        stopFlashTest()
         ui.removeCallbacks(focusReleaseRunnable)
         focusSquare.visibility = View.INVISIBLE
         afLabel.visibility = View.GONE
@@ -453,6 +432,12 @@ class MainActivity : Activity(), CameraController.Listener {
         showStatus(message)
     }
 
+    override fun onFlashStrengthUnsupported() {
+        if (menu == Panel.FLASH) closeMenu()
+        refresh()
+        showStatus("FLAŞ GÜCÜ BU TELEFONDA AYARLANAMIYOR")
+    }
+
     override fun onSaved(name: String) {
         if (!bursting) showStatus("KAYDEDİLDİ  ·  DCIM/RawKamera")
     }
@@ -522,7 +507,8 @@ class MainActivity : Activity(), CameraController.Listener {
 
     /** Flaşın o anki modunda kaç güç seviyesi gösterilecek (0 = ayarlanamıyor). */
     private fun flashLevels(): Int {
-        val max = if (flashTorch) cam.torchMaxLevel else cam.singleMaxLevel
+        if (cam.strengthBroken) return 0
+        val max = cam.torchMaxLevel
         return if (max > 1) minOf(max, 10) else 0
     }
 
@@ -535,7 +521,7 @@ class MainActivity : Activity(), CameraController.Listener {
     private fun halStrength(): Int {
         val n = flashLevels()
         if (n == 0) return 0
-        val max = if (flashTorch) cam.torchMaxLevel else cam.singleMaxLevel
+        val max = cam.torchMaxLevel
         return ((flashIdx + 1) * max / n.toFloat()).roundToInt().coerceIn(1, max)
     }
 
@@ -578,24 +564,6 @@ class MainActivity : Activity(), CameraController.Listener {
                 }
             }
         }
-    }
-
-    private fun startFlashTest() {
-        if (!started || counting || testStep > 0) return
-        ui.post {
-            closeMenu()
-            testStep = 0
-            ui.post(flashTestRunnable)
-        }
-    }
-
-    private fun stopFlashTest() {
-        ui.removeCallbacks(flashTestRunnable)
-        if (testStep == 0) return
-        testStep = 0
-        cam.setFlashTest(0)
-        countdown.visibility = View.GONE
-        info.text = ""
     }
 
     // ---------- Histogram ve EV ölçümü ----------
@@ -775,7 +743,6 @@ class MainActivity : Activity(), CameraController.Listener {
                 refresh()
             })
         }
-        flashRow.addView(optionView("TEST") { startFlashTest() })
         TIMER_OPTS.forEach { sec ->
             timerRow.addView(optionView(if (sec == 0) "KAPALI" else "$sec SN") { timerSec = sec })
         }
@@ -799,9 +766,7 @@ class MainActivity : Activity(), CameraController.Listener {
 
     private fun refreshSettings() {
         for (i in 0 until guideRow.childCount) styleOption(guideRow.getChildAt(i) as TextView, i == guideMode)
-        for (i in 0 until flashRow.childCount) {
-            styleOption(flashRow.getChildAt(i) as TextView, i < 2 && (i == 1) == flashTorch)
-        }
+        for (i in 0 until flashRow.childCount) styleOption(flashRow.getChildAt(i) as TextView, (i == 1) == flashTorch)
         for (i in 0 until timerRow.childCount) styleOption(timerRow.getChildAt(i) as TextView, TIMER_OPTS[i] == timerSec)
     }
 
