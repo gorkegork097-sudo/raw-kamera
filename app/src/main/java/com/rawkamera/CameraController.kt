@@ -77,6 +77,14 @@ class CameraController(
     @Volatile var running = false
         private set
 
+    /** Flaş testi: 0 = kapalı, 1 = manuel pozlama + fener, 2 = otomatik pozlama + fener. */
+    @Volatile private var flashTest = 0
+
+    fun setFlashTest(method: Int) {
+        flashTest = method
+        handler?.post { updatePreview() }
+    }
+
     /** Telefonun tutuluş açısı (0, 90, 180, 270), DNG yönü için. */
     @Volatile var deviceRotation = 0
 
@@ -234,6 +242,12 @@ class CameraController(
 
     private fun applyManual(b: CaptureRequest.Builder, still: Boolean, singleFlash: Boolean) {
         val c = chars
+        if (!still && flashTest == 2) {
+            b.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+            b.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+            b.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_TORCH)
+            return
+        }
         b.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
         b.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
         b.set(CaptureRequest.SENSOR_SENSITIVITY, iso)
@@ -253,6 +267,7 @@ class CameraController(
 
         // Flaş: sürekli modda her karede yanar, patlama modunda sadece çekim karesinde.
         val mode = when {
+            !still && flashTest == 1 -> CaptureRequest.FLASH_MODE_TORCH
             flash == Flash.TORCH -> CaptureRequest.FLASH_MODE_TORCH
             still && singleFlash && flash == Flash.SINGLE -> CaptureRequest.FLASH_MODE_SINGLE
             else -> CaptureRequest.FLASH_MODE_OFF
