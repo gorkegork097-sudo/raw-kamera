@@ -21,7 +21,6 @@ Fotoğraflar `DCIM/RawKamera` klasörüne kaydedilir.
 | Vizöre basılı tut | O noktada odağı kilitler (AF-L) |
 | Alttaki çubuğa dokun | Fotoğraf çeker (zamanlayıcı açıksa geri sayar, son 3 sn bip) |
 | Alttaki çubuğa basılı tut | Seri çekim (her karede tık, çekilen kare sayısı görünür) |
-
 | Ayar menüsü › MOD | MANUEL (M) · OTOMATİK (A) · ISO ÖNCELİKLİ (Sv) · ENS ÖNCELİKLİ (Tv) |
 | Otomatik modda EV'ye dokun | EV telafisi (−3 … +3, 1/3 adım) |
 | Otomatik bir ayarın tuşuna uzun bas | O ayar manuele geçer, mod kendiliğinden değişir |
