@@ -22,6 +22,10 @@ Fotoğraflar `DCIM/RawKamera` klasörüne kaydedilir.
 | Alttaki çubuğa dokun | Fotoğraf çeker (zamanlayıcı açıksa geri sayar, son 3 sn bip) |
 | Alttaki çubuğa basılı tut | Seri çekim (her karede tık, çekilen kare sayısı görünür) |
 
+| Ayar menüsü › MOD | MANUEL (M) · OTOMATİK (A) · ISO ÖNCELİKLİ (Sv) · ENS ÖNCELİKLİ (Tv) |
+| Otomatik modda EV'ye dokun | EV telafisi (−3 … +3, 1/3 adım) |
+| Otomatik bir ayarın tuşuna uzun bas | O ayar manuele geçer, mod kendiliğinden değişir |
+
 Menüler son ayardan 4 saniye sonra kendiliğinden kapanır.
 Telefon sessiz ya da titreşim modundayken uygulama hiç ses çıkarmaz.
 Patlama modunda flaş seri çekimde kullanılmaz; sürekli modda yanmaya devam eder.

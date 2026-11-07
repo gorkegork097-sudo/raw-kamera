@@ -29,11 +29,15 @@ import android.widget.TextView
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.ln
+import kotlin.math.log2
 import kotlin.math.roundToInt
 
 class MainActivity : Activity(), CameraController.Listener {
 
-    private enum class Panel { ISO, SHUTTER, FLASH, SETTINGS }
+    private enum class Panel { ISO, SHUTTER, FLASH, EV, SETTINGS }
+
+    /** M: manuel · A: otomatik · SV: ISO öncelikli · TV: enstantane öncelikli */
+    private enum class ExpMode(val tag: String) { M("M"), A("A"), SV("Sv"), TV("Tv") }
 
     private data class Shutter(val label: String, val ns: Long)
 
@@ -53,6 +57,8 @@ class MainActivity : Activity(), CameraController.Listener {
     private lateinit var evValue: TextView
     private lateinit var flLabel: TextView
     private lateinit var flValue: TextView
+    private lateinit var modeLabel: TextView
+    private lateinit var modeRow: FlowLayout
     private lateinit var settingsBtn: ImageButton
     private lateinit var message: TextView
     private lateinit var menuPanel: View
@@ -87,6 +93,11 @@ class MainActivity : Activity(), CameraController.Listener {
     private var spiralFlip = 0
     private var timerSec = 0
 
+    // Pozlama modu ve EV telafisi (compIdx 9 = 0 EV, her adım 1/3 durak)
+    private var expMode = ExpMode.M
+    private var compIdx = 9
+    private var autoHoldUntil = 0L
+
     private var menu: Panel? = null
     private var started = false
     private var askedPermission = false
@@ -109,7 +120,7 @@ class MainActivity : Activity(), CameraController.Listener {
     private val meterRunnable = object : Runnable {
         override fun run() {
             meter()
-            ui.postDelayed(this, 250)
+            ui.postDelayed(this, 200)
         }
     }
     private val keyLongRunnable = Runnable { onVolumeHeld() }
@@ -168,6 +179,8 @@ class MainActivity : Activity(), CameraController.Listener {
         evValue = findViewById(R.id.evValue)
         flLabel = findViewById(R.id.flLabel)
         flValue = findViewById(R.id.flValue)
+        modeLabel = findViewById(R.id.modeLabel)
+        modeRow = findViewById(R.id.modeRow)
         settingsBtn = findViewById(R.id.settingsBtn)
         message = findViewById(R.id.message)
         menuPanel = findViewById(R.id.menuPanel)
@@ -190,8 +203,11 @@ class MainActivity : Activity(), CameraController.Listener {
         guides.mode = guideMode
         guides.flip = spiralFlip
 
-        findViewById<View>(R.id.isoBox).setOnClickListener { togglePanel(Panel.ISO) }
-        findViewById<View>(R.id.shBox).setOnClickListener { togglePanel(Panel.SHUTTER) }
+        findViewById<View>(R.id.isoBox).setOnClickListener { openParam(Panel.ISO) }
+        findViewById<View>(R.id.shBox).setOnClickListener { openParam(Panel.SHUTTER) }
+        findViewById<View>(R.id.evBox).setOnClickListener {
+            if (expMode == ExpMode.M) showStatus("MANUEL MODDA EV IŞIK ÖLÇERDİR") else togglePanel(Panel.EV)
+        }
         findViewById<View>(R.id.flBox).setOnClickListener { flashCombo() }
         settingsBtn.setOnClickListener { togglePanel(Panel.SETTINGS) }
         ruler.onStep = { d -> step(d) }
@@ -316,6 +332,8 @@ class MainActivity : Activity(), CameraController.Listener {
         timerSec = p.getInt("timer", 0).takeIf { it in TIMER_OPTS } ?: 0
         flashTorch = p.getBoolean("torch", false)
         flashIdx = p.getInt("flashIdx", 4)
+        expMode = ExpMode.values().getOrNull(p.getInt("mode", 0)) ?: ExpMode.M
+        compIdx = p.getInt("comp", 9).coerceIn(0, COMP_LABELS.lastIndex)
     }
 
     private fun savePrefs() {
@@ -325,6 +343,8 @@ class MainActivity : Activity(), CameraController.Listener {
             .putInt("timer", timerSec)
             .putBoolean("torch", flashTorch)
             .putInt("flashIdx", flashIdx)
+            .putInt("mode", expMode.ordinal)
+            .putInt("comp", compIdx)
         if (isoValues.isNotEmpty()) {
             e.putInt("iso", isoValues[isoIdx]).putLong("ns", shutterValues[shIdx].ns)
         }
@@ -375,6 +395,8 @@ class MainActivity : Activity(), CameraController.Listener {
     private fun shoot() {
         if (!started) return
         if (cam.capture(withFlash = true)) {
+            // Patlama flaşının ışığı otomatik pozlamayı şaşırtmasın.
+            if (flashOn && !flashTorch) autoHoldUntil = System.currentTimeMillis() + 1800
             sfx.shutter()
             shutterBar.alpha = 0.35f
             shutterBar.animate().alpha(1f).setDuration(220).start()
@@ -589,9 +611,88 @@ class MainActivity : Activity(), CameraController.Listener {
         histogram.setBins(bins)
         // Orta gri (~118) hedefine göre sapma; görüntü gama kodlu olduğu için 2.2 ile ölçeklenir.
         val mean = (sum / px.size).coerceAtLeast(1.0)
-        val ev = (2.2 * ln(mean / 118.0) / ln(2.0)).coerceIn(-3.0, 3.0)
-        val q = (ev * 3).roundToInt() / 3.0
-        evValue.text = formatEv(q)
+        val raw = 2.2 * ln(mean / 118.0) / ln(2.0)
+        if (expMode == ExpMode.M) {
+            val q = (raw.coerceIn(-3.0, 3.0) * 3).roundToInt() / 3.0
+            evValue.text = formatEv(q)
+        } else {
+            evValue.text = COMP_LABELS[compIdx]
+            autoExpose(raw)
+        }
+    }
+
+    // ---------- Otomatik pozlama ----------
+
+    private fun compStops() = (compIdx - 9) / 3.0
+
+    private fun isoAuto() = expMode == ExpMode.A || expMode == ExpMode.TV
+    private fun shutterAuto() = expMode == ExpMode.A || expMode == ExpMode.SV
+
+    private fun nearestIso(logIso: Double): Int =
+        isoValues.indices.minByOrNull { abs(log2(isoValues[it].toDouble()) - logIso) } ?: 0
+
+    private fun nearestShutter(logT: Double): Int =
+        shutterValues.indices.minByOrNull { abs(log2(shutterValues[it].ns / 1e9) - logT) } ?: 0
+
+    /**
+     * Ölçülen parlaklık (orta griye göre durak) ile telafi hedefi arasındaki farkı
+     * otomatik olan değer(ler)i 1/3 durak adımlarla değiştirerek kapatır.
+     */
+    private fun autoExpose(measured: Double) {
+        if (isoValues.isEmpty() || !started || counting) return
+        if (System.currentTimeMillis() < autoHoldUntil) return
+        val err = measured.coerceIn(-4.0, 4.0) - compStops()
+        if (abs(err) < 0.25) return
+        val stepStops = (err * 0.7).coerceIn(-2.0, 2.0)
+        val logIso = log2(isoValues[isoIdx].toDouble())
+        val logT = log2(shutterValues[shIdx].ns / 1e9)
+        val target = logIso + logT - stepStops
+        var newIso = isoIdx
+        var newSh = shIdx
+        when (expMode) {
+            ExpMode.SV -> newSh = nearestShutter(target - logIso)
+            ExpMode.TV -> newIso = nearestIso(target - logT)
+            ExpMode.A -> {
+                // Önce en düşük ISO; enstantane 1/60'tan yavaşa düşecekse ISO yükselir,
+                // ISO da yetmezse enstantane yavaşlar.
+                val handheld = log2(1 / 60.0)
+                val tAtBase = target - log2(isoValues.first().toDouble())
+                if (tAtBase <= handheld) {
+                    newIso = 0
+                    newSh = nearestShutter(tAtBase)
+                } else {
+                    newIso = nearestIso(target - handheld)
+                    newSh = nearestShutter(target - log2(isoValues[newIso].toDouble()))
+                }
+            }
+            ExpMode.M -> return
+        }
+        if (newIso != isoIdx || newSh != shIdx) {
+            isoIdx = newIso
+            shIdx = newSh
+            cam.setExposure(isoValues[isoIdx], shutterValues[shIdx].ns)
+            refresh()
+        }
+    }
+
+    /** Otomatik olan bir ayarın menüsü istenirse o ayar manuele geçer, mod buna göre değişir. */
+    private fun openParam(p: Panel) {
+        if (!started) return
+        if (p == Panel.ISO && isoAuto()) {
+            expMode = if (expMode == ExpMode.A) ExpMode.SV else ExpMode.M
+            afterModeChange()
+        } else if (p == Panel.SHUTTER && shutterAuto()) {
+            expMode = if (expMode == ExpMode.A) ExpMode.TV else ExpMode.M
+            afterModeChange()
+        }
+        togglePanel(p)
+    }
+
+    private fun afterModeChange() {
+        if (expMode == ExpMode.M && menu == Panel.EV) closeMenu()
+        refresh()
+        refreshSettings()
+        savePrefs()
     }
 
     private fun formatEv(v: Double): String {
@@ -653,10 +754,18 @@ class MainActivity : Activity(), CameraController.Listener {
                     (n != flashIdx).also { flashIdx = n }
                 }
             }
+            Panel.EV -> {
+                val n = (compIdx + delta).coerceIn(0, COMP_LABELS.lastIndex)
+                (n != compIdx).also { compIdx = n }
+            }
             Panel.SETTINGS -> false
         }
         if (changed) {
-            if (m == Panel.FLASH) applyFlash() else cam.setExposure(isoValues[isoIdx], shutterValues[shIdx].ns)
+            when (m) {
+                Panel.FLASH -> applyFlash()
+                Panel.EV -> evValue.text = COMP_LABELS[compIdx]
+                else -> cam.setExposure(isoValues[isoIdx], shutterValues[shIdx].ns)
+            }
             root.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
             if (delta > 0) sfx.tickUp() else sfx.tickDown()
             refresh()
@@ -683,7 +792,9 @@ class MainActivity : Activity(), CameraController.Listener {
         styleItem(isoLabel, isoValue, m, Panel.ISO)
         styleItem(shLabel, shValue, m, Panel.SHUTTER)
         styleItem(flLabel, flValue, m, Panel.FLASH)
-        evValue.setTextColor(if (m != null) GREY else Color.WHITE)
+        styleItem(evLabel, evValue, m, Panel.EV)
+        modeLabel.text = expMode.tag
+        if (expMode != ExpMode.M) evValue.text = COMP_LABELS[compIdx]
         if (!flashOn && m == null) flValue.setTextColor(GREY)
         settingsBtn.setBackgroundResource(if (m == Panel.SETTINGS) R.drawable.underline else android.R.color.transparent)
 
@@ -705,6 +816,12 @@ class MainActivity : Activity(), CameraController.Listener {
                 menuValue.text = fl
                 ruler.labels = (1..levels).map { it.toString() }
                 ruler.index = flashIdx
+            }
+            Panel.EV -> {
+                menuLabel.text = "EV TELAFİSİ"
+                menuValue.text = COMP_LABELS[compIdx]
+                ruler.labels = COMP_LABELS
+                ruler.index = compIdx
             }
             else -> {}
         }
@@ -743,6 +860,12 @@ class MainActivity : Activity(), CameraController.Listener {
                 refresh()
             })
         }
+        MODE_NAMES.forEachIndexed { i, name ->
+            modeRow.addView(optionView(name) {
+                expMode = ExpMode.values()[i]
+                afterModeChange()
+            })
+        }
         TIMER_OPTS.forEach { sec ->
             timerRow.addView(optionView(if (sec == 0) "KAPALI" else "$sec SN") { timerSec = sec })
         }
@@ -767,6 +890,7 @@ class MainActivity : Activity(), CameraController.Listener {
     private fun refreshSettings() {
         for (i in 0 until guideRow.childCount) styleOption(guideRow.getChildAt(i) as TextView, i == guideMode)
         for (i in 0 until flashRow.childCount) styleOption(flashRow.getChildAt(i) as TextView, (i == 1) == flashTorch)
+        for (i in 0 until modeRow.childCount) styleOption(modeRow.getChildAt(i) as TextView, i == expMode.ordinal)
         for (i in 0 until timerRow.childCount) styleOption(timerRow.getChildAt(i) as TextView, TIMER_OPTS[i] == timerSec)
     }
 
@@ -802,7 +926,7 @@ class MainActivity : Activity(), CameraController.Listener {
             keysDown.size >= 2 -> flashCombo()
             keysDown.size == 1 && !keyCombo -> {
                 val target = if (keysDown.first() == KeyEvent.KEYCODE_VOLUME_UP) Panel.ISO else Panel.SHUTTER
-                togglePanel(target)
+                openParam(target)
             }
         }
     }
@@ -873,6 +997,17 @@ class MainActivity : Activity(), CameraController.Listener {
         private val GUIDE_NAMES = listOf("KAPALI", "ÜÇTE BİR", "ALTIN ORAN", "SPİRAL", "ÇAPRAZ", "PERSPEKTİF")
         private val FLASH_MODES = listOf("PATLAMA", "SÜREKLİ")
         private val TIMER_OPTS = listOf(0, 2, 5, 10)
+        private val MODE_NAMES = listOf("MANUEL", "OTOMATİK", "ISO ÖNCELİKLİ", "ENS ÖNCELİKLİ")
+
+        // −3 … +3 EV, 1/3 durak adımlarla
+        private val COMP_LABELS = (-9..9).map { k ->
+            val sign = if (k > 0) "+" else if (k < 0) "\u2212" else ""
+            when {
+                k == 0 -> "0"
+                k % 3 == 0 -> sign + abs(k / 3)
+                else -> sign + String.format(Locale.US, "%.1f", abs(k) / 3.0)
+            }
+        }
 
         private val ISO_STEPS = listOf(
             50, 64, 80, 100, 125, 160, 200, 250, 320, 400, 500, 640, 800, 1000, 1250,

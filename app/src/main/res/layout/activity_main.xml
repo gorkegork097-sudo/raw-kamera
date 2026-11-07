@@ -113,6 +113,7 @@
             </LinearLayout>
 
             <LinearLayout
+                android:id="@+id/evBox"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
@@ -143,6 +144,16 @@
                     android:text="—" />
             </LinearLayout>
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/modeLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:fontFamily="sans-serif-medium"
+            android:text="M"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -269,6 +280,15 @@
 
                 <TextView style="@style/PanelLabel"
                     android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="MOD" />
+                <com.rawkamera.FlowLayout
+                    android:id="@+id/modeRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+
+                <TextView style="@style/PanelLabel"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
                     android:text="KILAVUZ" />
                 <com.rawkamera.FlowLayout
                     android:id="@+id/guideRow"
