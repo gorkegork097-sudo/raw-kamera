@@ -87,6 +87,10 @@ class CameraController(
         private set
     private var torchMisses = 0
 
+    // Patlama sırasında fenerin gerçekten yandığını izlemek için (kamera iş parçacığında).
+    private var preFlashFrames = 0
+    private var flashStateKnown = false
+
     /** Telefonun tutuluş açısı (0, 90, 180, 270), DNG yönü için. */
     @Volatile var deviceRotation = 0
 
@@ -304,6 +308,11 @@ class CameraController(
             result: TotalCaptureResult
         ) {
             val wantTorch = request.get(CaptureRequest.FLASH_MODE) == CaptureRequest.FLASH_MODE_TORCH
+            if (preFlash && wantTorch) {
+                val fs = result.get(CaptureResult.FLASH_STATE)
+                if (fs != null) flashStateKnown = true
+                if (fs == CaptureResult.FLASH_STATE_FIRED || fs == CaptureResult.FLASH_STATE_PARTIAL) preFlashFrames++
+            }
             if (!wantTorch || strengthBroken || flashStrength <= 0 || Build.VERSION.SDK_INT < 35) {
                 torchMisses = 0
                 return
@@ -389,15 +398,38 @@ class CameraController(
         val fire = withFlash && flash == Flash.SINGLE
         h.post {
             if (fire) {
-                // Önce feneri yak, ışık oturunca kareyi çek.
+                // Önce feneri yak, kamera "ışık yandı" deyince kareyi çek.
                 preFlash = true
+                preFlashFrames = 0
+                flashStateKnown = false
                 updatePreview()
-                h.postDelayed({ doCapture(orientation, fire) }, PRE_FLASH_MS)
+                waitForTorch(h, orientation, System.currentTimeMillis(), retried = false)
             } else {
                 doCapture(orientation, fire)
             }
         }
         return true
+    }
+
+    private fun waitForTorch(h: Handler, orientation: Int, startMs: Long, retried: Boolean) {
+        val elapsed = System.currentTimeMillis() - startMs
+        val strengthInUse = flashStrength > 0 && !strengthBroken && Build.VERSION.SDK_INT >= 35
+        when {
+            // Işık iki karedir yanıyor: çek.
+            preFlashFrames >= 2 -> doCapture(orientation, true)
+            // Kamera durum bildirmiyorsa sabit süre bekle.
+            !flashStateKnown && elapsed >= PRE_FLASH_MS -> doCapture(orientation, true)
+            // Güç ayarı feneri susturuyor: ayarı bırak ve bir kez daha dene.
+            flashStateKnown && strengthInUse && !retried && elapsed >= 600 -> {
+                strengthBroken = true
+                updatePreview()
+                post { listener.onFlashStrengthUnsupported() }
+                h.postDelayed({ waitForTorch(h, orientation, System.currentTimeMillis(), retried = true) }, 30)
+            }
+            // Yine de yanmadıysa beklemeyi bırakıp çek.
+            elapsed >= MAX_PRE_FLASH_MS -> doCapture(orientation, true)
+            else -> h.postDelayed({ waitForTorch(h, orientation, startMs, retried) }, 30)
+        }
     }
 
     private fun doCapture(orientation: Int, fire: Boolean) {
@@ -417,9 +449,19 @@ class CameraController(
             return
         }
         try {
-            val b = d.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
-            b.addTarget(r.surface)
-            applyManual(b, still = true, singleFlash = fire)
+            // Flaşlı karede, fenerin çalıştığı vizör akışıyla aynı ayarlarla çekilir.
+            val b = if (fire) {
+                d.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).also {
+                    previewSurface?.let { ps -> it.addTarget(ps) }
+                    it.addTarget(r.surface)
+                    applyManual(it, still = false, singleFlash = false)
+                }
+            } else {
+                d.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).also {
+                    it.addTarget(r.surface)
+                    applyManual(it, still = true, singleFlash = false)
+                }
+            }
             s.capture(b.build(), object : CameraCaptureSession.CaptureCallback() {
                 override fun onCaptureCompleted(
                     session: CameraCaptureSession,
@@ -568,6 +610,7 @@ class CameraController(
     }
 
     companion object {
-        private const val PRE_FLASH_MS = 350L
+        private const val PRE_FLASH_MS = 500L
+        private const val MAX_PRE_FLASH_MS = 1200L
     }
 }
