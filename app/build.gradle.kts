@@ -19,19 +19,21 @@ android {
     }
 
     // Sabit imza: her yeni sürüm eskisinin üzerine kurulabilsin diye.
+    // Anahtar dosyası şifrelidir; şifre sadece GitHub'ın gizli ayarlarında (KEYSTORE_PASSWORD) durur.
+    val keystorePassword = System.getenv("KEYSTORE_PASSWORD")
     signingConfigs {
         create("release") {
-            storeFile = file("rawkamera.keystore")
-            storePassword = "rawkamera"
+            storeFile = file("rawkamera-release.jks")
+            storePassword = keystorePassword
             keyAlias = "rawkamera"
-            keyPassword = "rawkamera"
+            keyPassword = keystorePassword
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (keystorePassword.isNullOrEmpty()) null else signingConfigs.getByName("release")
         }
     }
 

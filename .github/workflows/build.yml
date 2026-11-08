@@ -23,7 +23,18 @@ jobs:
         with:
           gradle-version: '8.7'
 
+      - name: İmza şifresini kontrol et
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::KEYSTORE_PASSWORD gizli ayarı eksik (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+
       - name: APK derle
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: gradle assembleRelease --no-daemon --stacktrace
 
       - name: APK'yı adlandır

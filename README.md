@@ -33,4 +33,5 @@ EV, mevcut ISO ve enstantaneyle fotoğrafın orta griye göre ne kadar karanlık
 
 ## Derleme
 `main` dalına her gönderimde GitHub Actions APK'yı derleyip yeni bir sürüm olarak yayınlar.
-İmza anahtarı (`app/rawkamera.keystore`) sabittir; böylece yeni sürümler eskisinin üzerine kurulur.
+İmza anahtarı (`app/rawkamera-release.jks`) şifrelidir; şifresi depoda değil, GitHub'ın gizli ayarlarında
+`KEYSTORE_PASSWORD` adıyla durur. Anahtar sabit olduğu için yeni sürümler eskisinin üzerine kurulur.
