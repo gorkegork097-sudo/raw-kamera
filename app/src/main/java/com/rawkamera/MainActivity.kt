@@ -97,6 +97,8 @@ class MainActivity : Activity(), CameraController.Listener {
     private var expMode = ExpMode.M
     private var compIdx = 9
     private var autoHoldUntil = 0L
+    private var settleUntil = 0L
+    private var evSmooth = Double.NaN
 
     private var menu: Panel? = null
     private var started = false
@@ -640,10 +642,18 @@ class MainActivity : Activity(), CameraController.Listener {
      */
     private fun autoExpose(measured: Double) {
         if (isoValues.isEmpty() || !started || counting) return
-        if (System.currentTimeMillis() < autoHoldUntil) return
-        val err = measured.coerceIn(-4.0, 4.0) - compStops()
-        if (abs(err) < 0.25) return
-        val stepStops = (err * 0.7).coerceIn(-2.0, 2.0)
+        val now = System.currentTimeMillis()
+        // Flaştan sonra ya da son değişiklik görüntüye yansıyana kadar ölçme.
+        if (now < autoHoldUntil || now < settleUntil) {
+            evSmooth = Double.NaN
+            return
+        }
+        // Birkaç ölçümün ortalaması: anlık titremelere tepki verme.
+        val m = measured.coerceIn(-4.0, 4.0)
+        evSmooth = if (evSmooth.isNaN()) m else evSmooth * 0.6 + m * 0.4
+        val err = evSmooth - compStops()
+        if (abs(err) < AE_DEADBAND) return
+        val stepStops = (err * 0.6).coerceIn(-2.0, 2.0)
         val logIso = log2(isoValues[isoIdx].toDouble())
         val logT = log2(shutterValues[shIdx].ns / 1e9)
         val target = logIso + logT - stepStops
@@ -672,6 +682,8 @@ class MainActivity : Activity(), CameraController.Listener {
             shIdx = newSh
             cam.setExposure(isoValues[isoIdx], shutterValues[shIdx].ns)
             refresh()
+            settleUntil = now + AE_SETTLE_MS
+            evSmooth = Double.NaN
         }
     }
 
@@ -995,6 +1007,8 @@ class MainActivity : Activity(), CameraController.Listener {
         private const val LONG_PRESS_MS = 500L
         private const val BURST_HOLD_MS = 400L
         private const val FOCUS_RELEASE_MS = 3000L
+        private const val AE_DEADBAND = 0.5     // durak: bundan küçük farka dokunma
+        private const val AE_SETTLE_MS = 600L   // değişiklikten sonra bekleme
         private val GREY = Color.rgb(154, 154, 154)
         private val OPTION_GREY = Color.rgb(143, 143, 143)
 
