@@ -19,6 +19,7 @@ Fotoğraflar `DCIM/RawKamera` klasörüne kaydedilir.
 | Seçili SPİRAL'e tekrar dokun | Spirali bir sonraki köşeye çevirir |
 | Vizöre dokun | O noktaya odaklar, 3 sn sonra otomatik odağa döner |
 | Vizöre basılı tut | O noktada odağı kilitler (AF-L) |
+| Menü kapalıyken ses açmaya kısa bas | Fotoğraf çeker (zamanlayıcı açıksa geri sayar) |
 | Alttaki çubuğa dokun | Fotoğraf çeker (zamanlayıcı açıksa geri sayar, son 3 sn bip) |
 | Alttaki çubuğa basılı tut | Seri çekim (her karede tık, çekilen kare sayısı görünür) |
 | Ayar menüsü › MOD | MANUEL (M) · OTOMATİK (A) · ISO ÖNCELİKLİ (Sv) · ENS ÖNCELİKLİ (Tv) |

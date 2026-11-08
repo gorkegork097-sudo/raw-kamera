@@ -904,6 +904,7 @@ class MainActivity : Activity(), CameraController.Listener {
     // Ses açma uzun bas: ISO menüsü · Ses kısma uzun bas: enstantane menüsü
     // İkisine birlikte uzun bas: flaş · Aynı uzun basış menüyü kapatır
     // Menü açıkken kısa basış: değeri bir adım değiştirir
+    // Menü kapalıyken ses açma kısa basış: fotoğraf çeker
 
     private fun isVolume(keyCode: Int) =
         keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
@@ -938,6 +939,9 @@ class MainActivity : Activity(), CameraController.Listener {
             ui.removeCallbacks(keyLongRunnable)
             if (menu != null && menu != Panel.SETTINGS) {
                 step(if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) 1 else -1)
+            } else if (menu == null && keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+                // Ses açma kısa basış: deklanşör (geri sayım sürüyorsa iptal eder).
+                if (counting) cancelCountdown() else singlePress()
             }
         }
         if (keysDown.isEmpty()) {
