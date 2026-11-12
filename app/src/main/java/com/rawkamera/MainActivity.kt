@@ -86,6 +86,7 @@ class MainActivity : Activity(), CameraController.Listener {
     // Flaş
     private var flashOn = false
     private var flashTorch = false
+    private var flashReal = false
     private var flashIdx = 4
 
     // Kılavuz ve zamanlayıcı
@@ -333,6 +334,7 @@ class MainActivity : Activity(), CameraController.Listener {
         spiralFlip = p.getInt("spiral", 0).coerceIn(0, 3)
         timerSec = p.getInt("timer", 0).takeIf { it in TIMER_OPTS } ?: 0
         flashTorch = p.getBoolean("torch", false)
+        flashReal = !flashTorch && p.getBoolean("realFlash", false)
         flashIdx = p.getInt("flashIdx", 4)
         expMode = ExpMode.values().getOrNull(p.getInt("mode", 0)) ?: ExpMode.M
         compIdx = p.getInt("comp", 9).coerceIn(0, COMP_LABELS.lastIndex)
@@ -344,6 +346,7 @@ class MainActivity : Activity(), CameraController.Listener {
             .putInt("spiral", spiralFlip)
             .putInt("timer", timerSec)
             .putBoolean("torch", flashTorch)
+            .putBoolean("realFlash", flashReal)
             .putInt("flashIdx", flashIdx)
             .putInt("mode", expMode.ordinal)
             .putInt("comp", compIdx)
@@ -456,6 +459,10 @@ class MainActivity : Activity(), CameraController.Listener {
         showStatus(message)
     }
 
+    override fun onRealFlashMissed() {
+        showStatus("ANLIK FLAŞ BU TELEFONDA PATLAMADI")
+    }
+
     override fun onFlashStrengthUnsupported() {
         if (menu == Panel.FLASH) closeMenu()
         refresh()
@@ -531,7 +538,7 @@ class MainActivity : Activity(), CameraController.Listener {
 
     /** Flaşın o anki modunda kaç güç seviyesi gösterilecek (0 = ayarlanamıyor). */
     private fun flashLevels(): Int {
-        if (cam.strengthBroken) return 0
+        if (cam.strengthBroken || flashReal) return 0
         val max = cam.torchMaxLevel
         return if (max > 1) minOf(max, 10) else 0
     }
@@ -553,6 +560,7 @@ class MainActivity : Activity(), CameraController.Listener {
         val mode = when {
             !flashOn -> CameraController.Flash.OFF
             flashTorch -> CameraController.Flash.TORCH
+            flashReal -> CameraController.Flash.REAL
             else -> CameraController.Flash.SINGLE
         }
         cam.setFlash(mode, halStrength())
@@ -584,7 +592,7 @@ class MainActivity : Activity(), CameraController.Listener {
                 } else {
                     closeMenu()
                     refresh()
-                    showStatus("FLAŞ GÜCÜ BU TELEFONDA AYARLANAMIYOR")
+                    if (!flashReal) showStatus("FLAŞ GÜCÜ BU TELEFONDA AYARLANAMIYOR")
                 }
             }
         }
@@ -797,7 +805,11 @@ class MainActivity : Activity(), CameraController.Listener {
         }
         isoValue.text = iso
         shValue.text = sh
-        flLabel.text = if (flashTorch) "FENER" else "FLŞ"
+        flLabel.text = when {
+            flashTorch -> "FENER"
+            flashReal -> "FLŞ-A"
+            else -> "FLŞ"
+        }
         flValue.text = fl
 
         val m = menu
@@ -867,6 +879,7 @@ class MainActivity : Activity(), CameraController.Listener {
         FLASH_MODES.forEachIndexed { i, name ->
             flashRow.addView(optionView(name) {
                 flashTorch = i == 1
+                flashReal = i == 2
                 clampFlashIdx()
                 applyFlash()
                 refresh()
@@ -901,7 +914,12 @@ class MainActivity : Activity(), CameraController.Listener {
 
     private fun refreshSettings() {
         for (i in 0 until guideRow.childCount) styleOption(guideRow.getChildAt(i) as TextView, i == guideMode)
-        for (i in 0 until flashRow.childCount) styleOption(flashRow.getChildAt(i) as TextView, (i == 1) == flashTorch)
+        val flashSel = when {
+            flashTorch -> 1
+            flashReal -> 2
+            else -> 0
+        }
+        for (i in 0 until flashRow.childCount) styleOption(flashRow.getChildAt(i) as TextView, i == flashSel)
         for (i in 0 until modeRow.childCount) styleOption(modeRow.getChildAt(i) as TextView, i == expMode.ordinal)
         for (i in 0 until timerRow.childCount) styleOption(timerRow.getChildAt(i) as TextView, TIMER_OPTS[i] == timerSec)
     }
@@ -1013,7 +1031,7 @@ class MainActivity : Activity(), CameraController.Listener {
         private val OPTION_GREY = Color.rgb(143, 143, 143)
 
         private val GUIDE_NAMES = listOf("KAPALI", "ÜÇTE BİR", "ALTIN ORAN", "SPİRAL", "ÇAPRAZ", "PERSPEKTİF")
-        private val FLASH_MODES = listOf("PATLAMA", "SÜREKLİ")
+        private val FLASH_MODES = listOf("PATLAMA", "SÜREKLİ", "ANLIK")
         private val TIMER_OPTS = listOf(0, 2, 5, 10)
         private val MODE_NAMES = listOf("MANUEL", "OTOMATİK", "ISO ÖNCELİKLİ", "ENS ÖNCELİKLİ")
 
