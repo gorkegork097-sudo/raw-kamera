@@ -28,9 +28,10 @@ Fotoğraflar `DCIM/RawKamera` klasörüne kaydedilir.
 
 Menüler son ayardan 4 saniye sonra kendiliğinden kapanır.
 Telefon sessiz ya da titreşim modundayken uygulama hiç ses çıkarmaz.
-Flaş modları: PATLAMA (fener kısa süre yanar, ISO/ENS senin ayarın; ışık en az enstantane süresi kadar yanar),
-ANLIK (telefonun gerçek, çok kısa flaş patlaması; o karede ISO/ENS'yi kamera seçer), SÜREKLİ (fener).
-Patlama ve anlık flaş seri çekimde kullanılmaz; sürekli modda fener yanmaya devam eder.
+Flaş modları: PATLAMA (fener çekim anında kısa süre yanar; ışık en az enstantane süresi kadar yanar,
+kısa bir patlama için 1/250 ya da daha hızlı enstantane kullan) ve SÜREKLİ (fener).
+Honor, telefonun gerçek flaş patlamasını dış uygulamalara açmıyor.
+Patlama seri çekimde kullanılmaz; sürekli modda fener yanmaya devam eder.
 EV, mevcut ISO ve enstantaneyle fotoğrafın orta griye göre ne kadar karanlık (−) ya da aydınlık (+) çıkacağını gösteren bir ışık ölçerdir.
 
 ## Derleme
