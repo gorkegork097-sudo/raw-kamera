@@ -67,6 +67,10 @@ class CameraController(
     private var device: CameraDevice? = null
     private var session: CameraCaptureSession? = null
     private var reader: ImageReader? = null
+
+    // Gerçek flaş için ek JPEG akışı: bazı telefonlar flaşı sadece JPEG istenen çekimde patlatır.
+    // Görüntüsü kullanılmaz, gelir gelmez kapatılır.
+    private var jpegReader: ImageReader? = null
     private var previewSurface: Surface? = null
 
     private var cameraId: String? = null
@@ -209,6 +213,18 @@ class CameraController(
         }, h)
         reader = r
 
+        val jpegSize = map.getOutputSizes(ImageFormat.JPEG)?.maxByOrNull { it.width.toLong() * it.height }
+        jpegReader = jpegSize?.let { size ->
+            ImageReader.newInstance(size.width, size.height, ImageFormat.JPEG, 2).also { jr ->
+                jr.setOnImageAvailableListener({ rd ->
+                    try {
+                        rd.acquireNextImage()?.close()
+                    } catch (_: Exception) {
+                    }
+                }, h)
+            }
+        }
+
         running = true
         try {
             manager.openCamera(id, object : CameraDevice.StateCallback() {
@@ -237,16 +253,25 @@ class CameraController(
     private fun createSession(d: CameraDevice) {
         val ps = previewSurface ?: return
         val r = reader ?: return
+        val jr = jpegReader
+        val surfaces = if (jr != null) listOf(ps, r.surface, jr.surface) else listOf(ps, r.surface)
         try {
             @Suppress("DEPRECATION")
-            d.createCaptureSession(listOf(ps, r.surface), object : CameraCaptureSession.StateCallback() {
+            d.createCaptureSession(surfaces, object : CameraCaptureSession.StateCallback() {
                 override fun onConfigured(s: CameraCaptureSession) {
                     session = s
                     updatePreview()
                 }
 
                 override fun onConfigureFailed(s: CameraCaptureSession) {
-                    post { listener.onCameraError("Kamera oturumu kurulamadı.") }
+                    if (jpegReader != null) {
+                        // Ek akış kabul edilmedi: onsuz, eskisi gibi kur.
+                        jpegReader?.close()
+                        jpegReader = null
+                        createSession(d)
+                    } else {
+                        post { listener.onCameraError("Kamera oturumu kurulamadı.") }
+                    }
                 }
             }, handler)
         } catch (e: Exception) {
@@ -593,6 +618,7 @@ class CameraController(
         try {
             val b = d.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
             b.addTarget(r.surface)
+            jpegReader?.let { b.addTarget(it.surface) }
             applyManual(b, still = true, singleFlash = false)
             s.capture(b.build(), object : CameraCaptureSession.CaptureCallback() {
                 override fun onCaptureCompleted(
@@ -734,6 +760,8 @@ class CameraController(
         results.clear()
         reader?.close()
         reader = null
+        jpegReader?.close()
+        jpegReader = null
         previewSurface?.release()
         previewSurface = null
         inFlight.set(0)
